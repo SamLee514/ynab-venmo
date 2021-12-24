@@ -1,0 +1,20 @@
+{
+  "name": "ynab-venmo",
+  "version": "1.0.0",
+  "description": "Connects Venmo to YNAB by way of reading my Venmo emails because Venmo API doesn't exist.",
+  "main": "index.js",
+  "author": "Sam Lee",
+  "license": "MIT",
+  "private": false,
+  "type": "commonjs",
+  "dependencies": {
+    "@types/node": "^17.0.2",
+    "mail-listener-typescript": "^1.0.18",
+    "mail-listener2": "^0.3.1",
+    "mail-listener6": "^2.0.3",
+    "typescript": "^4.5.4"
+  },
+  "devDependencies": {
+    "ts-node": "^10.4.0"
+  }
+}
