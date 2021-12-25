@@ -9,12 +9,15 @@
   "type": "commonjs",
   "dependencies": {
     "@types/node": "^17.0.2",
+    "imap": "^0.8.19",
     "mail-listener-typescript": "^1.0.18",
     "mail-listener2": "^0.3.1",
     "mail-listener6": "^2.0.3",
     "typescript": "^4.5.4"
   },
   "devDependencies": {
+    "@types/imap": "^0.8.35",
+    "@types/mailparser": "^3.4.0",
     "ts-node": "^10.4.0"
   }
 }
