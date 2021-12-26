@@ -1,5 +1,7 @@
-import Imap, { Box, ImapMessage } from "imap";
+import Imap, { Box, FetchOptions, ImapMessage } from "imap";
 import { ParsedMail, simpleParser } from "mailparser";
+
+const VENMO_ADDRESS = "venmo@venmo.com";
 
 const imap = new Imap({
   user: process.env.EMAIL_USERNAME || "",
@@ -9,38 +11,58 @@ const imap = new Imap({
   tls: false,
 });
 
-const parseMail = (box: Box) => (a: any, b: any, c: any) => {
-  const fetchOptions = {
-    markSeen: true,
-    struct: true,
-    bodies: [""],
-  };
-  console.log("hey", box.messages.total);
-
-  const onMessageCallback = (message: ImapMessage, seqno: string) => {
-    const onBodyCallback = async (
-      stream: NodeJS.ReadableStream,
-      info: Imap.ImapMessageBodyInfo
-    ) => {
-      const parsed = await simpleParser(stream);
-      console.log("hey subject:", parsed.subject);
-    };
-    message.on("body", onBodyCallback);
-  };
-  imap.seq
-    .fetch(`${box.messages.total + 1}:*`, fetchOptions)
-    .on("message", onMessageCallback);
+const fetchOptions = {
+  markSeen: true,
+  struct: true,
+  bodies: [""],
 };
 
-let mailStream;
+const boxState = {
+  numMessages: 0,
+  updated: false,
+  executing: false,
+};
+
+const checkForUpdate = (message: ImapMessage, seqno: string) => {
+  message.on("body", () => (boxState.updated = true));
+};
+
+const onMessage = (message: ImapMessage, seqno: string) => {
+  const onBodyCallback = async (
+    stream: NodeJS.ReadableStream,
+    info: Imap.ImapMessageBodyInfo
+  ) => {
+    const parsed = await simpleParser(stream);
+    // if (parsed.from?.value[0].address === VENMO_ADDRESS) {
+    //   await processVenmo(parsed);
+    // }
+    console.log("hey from:", parsed.from);
+    boxState.updated = false;
+  };
+
+  message.on("body", onBodyCallback);
+};
+
+const sleep = () => new Promise((resolve) => setTimeout(resolve, 100));
+
+const parseMail = (box: Box) => async () => {
+  const numMessages = box.messages.total;
+  // Hacky way to wait for the new email data to actually hit imap
+  while (!boxState.updated) {
+    imap.seq
+      .fetch(`${numMessages}`, fetchOptions)
+      .once("message", checkForUpdate);
+    await sleep();
+  }
+  // NOTE: if an email is deleted before getting received by imap, this part won't work.
+  // DON'T delete your venmo emails
+  console.log("Received. Now parsing...");
+  imap.seq.fetch(`${numMessages}`, fetchOptions).once("message", onMessage);
+};
 
 const onOpenBox = (err: Error, box: Box) => {
   if (err) throw err;
   console.log("Connection successful!");
-  const fetchOptions = {
-    markSeen: true,
-    struct: true,
-  };
   imap.on("mail", parseMail(box));
   console.log("Now listening for messages from Venmo...");
 };
