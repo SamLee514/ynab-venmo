@@ -9,14 +9,20 @@
   "type": "commonjs",
   "dependencies": {
     "@types/node": "^17.0.2",
+    "accounting": "^0.4.1",
     "imap": "^0.8.19",
     "mail-listener-typescript": "^1.0.18",
     "mail-listener2": "^0.3.1",
     "mail-listener6": "^2.0.3",
-    "typescript": "^4.5.4"
+    "mail-notifier": "^0.5.0",
+    "node-html-parser": "^5.2.0",
+    "typescript": "^4.5.4",
+    "ynab": "^1.25.0"
   },
   "devDependencies": {
+    "@types/accounting": "^0.4.2",
     "@types/imap": "^0.8.35",
+    "@types/mail-notifier": "^0.5.0",
     "@types/mailparser": "^3.4.0",
     "ts-node": "^10.4.0"
   }

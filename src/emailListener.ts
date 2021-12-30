@@ -90,6 +90,7 @@ export class EmailListener {
     message.on("body", async (stream: NodeJS.ReadableStream) => {
       const parsed = await simpleParser(stream);
       await this.#handleParsedMail(parsed);
+      this.setIsBoxUpdated(false);
     });
   };
 }
