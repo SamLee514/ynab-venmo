@@ -8,13 +8,16 @@ export class YnabVenmo {
   #budgetID: string | undefined;
   #venmoAccountName: string;
   #accountID: string | undefined;
+  #initialized: boolean;
 
   constructor(token: string, venmoAccountName: string) {
     this.#ynabAPI = new ynab.API(token);
     this.#venmoAccountName = venmoAccountName;
+    this.#initialized = false;
   }
 
   async init() {
+    if (this.#initialized) return;
     // get budget ID
     const budgets = await this.#ynabAPI.budgets.getBudgets();
     this.#budgetID = budgets.data.budgets[0].id; // Assumes user has 1 budget
@@ -28,6 +31,8 @@ export class YnabVenmo {
       throw new Error("Given Venmo account name is not valid");
     }
     this.#accountID = venmoAccount.id;
+
+    this.#initialized = true;
   }
 
   async createTransaction(
@@ -48,7 +53,7 @@ export class YnabVenmo {
         transactionWrapper
       );
     } catch (err) {
-      console.log("Error adding transaction :(");
+      console.log(err);
     }
   }
 }

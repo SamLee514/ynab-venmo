@@ -10,22 +10,22 @@ export const parseVenmoEmail = (
   parsed: ParsedMail
 ):
   | Omit<SaveTransaction, "account_id">
-  | { amount: number; import_id: string }
-  | undefined => {
+  | { amount: number; import_id: string } => {
   if (
     (parsed.from?.value[0].address === VENMO_ADDRESS ||
       parsed.from?.value[0].address === "sam@samlee.dev") &&
     parsed.html &&
     parsed.subject
   ) {
+    const parsedHTML = parsed.html.replace(/\n|\r/g, "");
     const payerMatch = parsed.subject.match(/(.*)paid you/);
     if (payerMatch) {
       return {
         date: getNonUpdateDate(parsed.date),
         amount: getNonUpdateAmount(parsed.subject),
         payee_name: payerMatch[1].trim(),
-        memo: getNonTransactionMemo(parsed.html),
-        import_id: getImportID(parsed.html),
+        memo: getNonTransactionMemo(parsedHTML),
+        import_id: getImportID(parsedHTML),
       };
     }
     const payeeMatch = parsed.subject.match(
@@ -36,8 +36,8 @@ export const parseVenmoEmail = (
         date: getNonUpdateDate(parsed.date),
         amount: getNonUpdateAmount(parsed.subject),
         payee_name: (payeeMatch[1] || payeeMatch[2]).trim(),
-        memo: getNonTransactionMemo(parsed.html),
-        import_id: getImportID(parsed.html),
+        memo: getNonTransactionMemo(parsedHTML),
+        import_id: getImportID(parsedHTML),
       };
     }
     const receiptMatch = parsed.subject.match(/Receipt from(.*)-/);
@@ -58,8 +58,8 @@ export const parseVenmoEmail = (
     const updateMatch = parsed.subject.match(/Updated total from(.*)/);
     if (updateMatch) {
       return {
-        amount: getUpdateAmount(parsed.html),
-        import_id: getUpdateImportID(parsed.html),
+        amount: getUpdateAmount(parsedHTML),
+        import_id: getUpdateImportID(parsedHTML),
       };
     }
     throw new Error("Something stupid happened oops");
@@ -76,12 +76,13 @@ const getNonTransactionMemo = (htmlText: string) => {
 };
 
 export const getImportID = (htmlText: string) => {
-  const match = htmlText.match(/Payment ID:(.*)\<\/p\>/);
+  const match = htmlText.match(/Payment ID:(.*?)\<\//);
   if (match) return match[1].trim();
   else throw new Error("oops");
 };
 
-const getNonUpdateAmount = (context: string) => Math.abs(unformat(context));
+const getNonUpdateAmount = (context: string) =>
+  Math.abs(unformat(context)) * -1000;
 
 const getUpdateAmount = (htmlText: string) => {
   const htmlDoc = parseHTML(htmlText);

@@ -82,7 +82,6 @@ export class EmailListener {
 
   #checkForUpdate = (message: ImapMessage, seqno: string) => {
     const bodyHandler = () => this.setIsBoxUpdated(true);
-    console.log("nice:", this);
     message.on("body", bodyHandler);
   };
 
