@@ -22,7 +22,7 @@ export const parseVenmoEmail = (
     if (payerMatch) {
       return {
         date: getNonUpdateDate(parsed.date),
-        amount: getNonUpdateAmount(parsed.subject),
+        amount: getNonUpdateAmount(parsed.subject, false),
         payee_name: payerMatch[1].trim(),
         memo: getNonTransactionMemo(parsedHTML),
         import_id: getImportID(parsedHTML),
@@ -81,8 +81,8 @@ export const getImportID = (htmlText: string) => {
   else throw new Error("oops");
 };
 
-const getNonUpdateAmount = (context: string) =>
-  Math.abs(unformat(context)) * -1000;
+const getNonUpdateAmount = (context: string, outflow: boolean = true) =>
+  Math.abs(unformat(context)) * (outflow ? -1000 : 1000);
 
 const getUpdateAmount = (htmlText: string) => {
   const htmlDoc = parseHTML(htmlText);
