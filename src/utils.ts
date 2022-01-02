@@ -1,5 +1,8 @@
 import { ParsedMail } from "mailparser";
-import { SaveTransaction } from "ynab";
+import {
+  SaveTransactionNoAccountID,
+  UpdateTransactionFields,
+} from "./ynabVenmo";
 import { parse as parseHTML } from "node-html-parser";
 // import { HTMLElement as ParsedHTML } from "node-html-parser";
 import { unformat } from "accounting";
@@ -8,14 +11,13 @@ const VENMO_ADDRESS = "venmo@venmo.com";
 
 export const parseVenmoEmail = (
   parsed: ParsedMail
-):
-  | Omit<SaveTransaction, "account_id">
-  | { amount: number; import_id: string } => {
+): SaveTransactionNoAccountID | UpdateTransactionFields => {
   if (
     (parsed.from?.value[0].address === VENMO_ADDRESS ||
       parsed.from?.value[0].address === "sam@samlee.dev") &&
     parsed.html &&
-    parsed.subject
+    parsed.subject &&
+    parsed.date
   ) {
     const parsedHTML = parsed.html.replace(/\n|\r/g, "");
     const payerMatch = parsed.subject.match(/(.*)paid you/);
@@ -25,7 +27,8 @@ export const parseVenmoEmail = (
         amount: getNonUpdateAmount(parsed.subject, false),
         payee_name: payerMatch[1].trim(),
         memo: getNonTransactionMemo(parsedHTML),
-        import_id: getImportID(parsedHTML),
+        import_id: getNonUpdateImportID(parsedHTML),
+        type: "CREATE",
       };
     }
     const payeeMatch = parsed.subject.match(
@@ -37,14 +40,15 @@ export const parseVenmoEmail = (
         amount: getNonUpdateAmount(parsed.subject),
         payee_name: (payeeMatch[1] || payeeMatch[2]).trim(),
         memo: getNonTransactionMemo(parsedHTML),
-        import_id: getImportID(parsedHTML),
+        import_id: getNonUpdateImportID(parsedHTML),
+        type: "CREATE",
       };
     }
-    const receiptMatch = parsed.subject.match(/Receipt from(.*)-/);
+    const receiptMatch = parsed.subject.match(/Receipt from(.*)- \$(.*)/);
     if (receiptMatch) {
       const transactionInfo = {
         date: getNonUpdateDate(parsed.date),
-        amount: getNonUpdateAmount(parsed.subject),
+        amount: getNonUpdateAmount(receiptMatch[2]),
         payee_name: receiptMatch[1].trim(),
       };
       return {
@@ -53,13 +57,17 @@ export const parseVenmoEmail = (
           transactionInfo.date +
           transactionInfo.amount +
           transactionInfo.payee_name,
+        type: "CREATE",
       };
     }
     const updateMatch = parsed.subject.match(/Updated total from(.*)/);
     if (updateMatch) {
+      const fields = getUpdateFields(parsedHTML);
       return {
         amount: getUpdateAmount(parsedHTML),
-        import_id: getUpdateImportID(parsedHTML),
+        searchDate: fields.date,
+        importID: fields.date + fields.amount + fields.payee_name,
+        type: "UPDATE",
       };
     }
     throw new Error("Something stupid happened oops");
@@ -75,10 +83,25 @@ const getNonTransactionMemo = (htmlText: string) => {
   return memoDiv?.innerText.trim();
 };
 
-export const getImportID = (htmlText: string) => {
+export const getNonUpdateImportID = (htmlText: string) => {
   const match = htmlText.match(/Payment ID:(.*?)\<\//);
   if (match) return match[1].trim();
   else throw new Error("oops");
+};
+
+const getUpdateFields = (htmlText: string) => {
+  const matched = htmlText.match(
+    /(.*)updated the amount they charged you. On(.*), you authorized a charge for \$(.*)./
+  );
+  if (matched) {
+    return {
+      date: new Date(matched[2]).toISOString().substring(0, 10),
+      amount: getNonUpdateAmount(matched[3]),
+      payee_name: matched[1].trim(),
+    };
+  } else {
+    throw new Error("Whoops");
+  }
 };
 
 const getNonUpdateAmount = (context: string, outflow: boolean = true) =>
@@ -97,17 +120,3 @@ const getUpdateAmount = (htmlText: string) => {
 
 const getNonUpdateDate = (date: Date | undefined) =>
   (date ? date.toISOString() : new Date().toISOString()).substring(0, 10);
-
-const getUpdateImportID = (htmlText: string) => {
-  const matched = htmlText.match(
-    /(.*)updated the amount they charged you. On(.*), you authorized a charge for \$(.*)./
-  );
-  if (matched) {
-    const date = new Date(matched[2]).toISOString().substring(0, 10);
-    const amount = getNonUpdateAmount(matched[3]);
-    const payee_name = matched[1].trim();
-    return date + amount + payee_name;
-  } else {
-    throw new Error("Whoops");
-  }
-};

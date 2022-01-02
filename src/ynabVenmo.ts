@@ -1,5 +1,15 @@
 import * as ynab from "ynab";
-import { SaveTransaction } from "ynab";
+import { SaveTransaction, UpdateTransaction } from "ynab";
+
+export type SaveTransactionNoAccountID = Omit<SaveTransaction, "account_id"> & {
+  type: "CREATE";
+};
+export type UpdateTransactionFields = {
+  amount: number;
+  searchDate: string;
+  importID: string;
+  type: "UPDATE";
+};
 
 const ynabAPI = new ynab.API(process.env.YNAB_TOKEN || "");
 
@@ -33,6 +43,50 @@ export class YnabVenmo {
     this.#accountID = venmoAccount.id;
 
     this.#initialized = true;
+  }
+
+  async #getTransactionByImportID(importID: string, sinceDate: string) {
+    // TODO: redis
+    // NOTE: not using payee because changing payee names can create a problem.
+    if (!this.#budgetID || !this.#accountID) {
+      throw new Error("Call init() first :(");
+    }
+    const transactions =
+      await this.#ynabAPI.transactions.getTransactionsByAccount(
+        this.#budgetID,
+        this.#accountID,
+        sinceDate
+      );
+
+    return transactions.data.transactions.find(
+      (transaction) => transaction.import_id === importID
+    );
+  }
+
+  async updateTransaction({
+    amount,
+    searchDate,
+    importID,
+  }: UpdateTransactionFields) {
+    if (!this.#budgetID || !this.#accountID) {
+      throw new Error("Call init() first :(");
+    }
+    const transaction = await this.#getTransactionByImportID(
+      importID,
+      searchDate
+    );
+    if (!transaction) throw new Error("transaction does not exist :(");
+    const transactionWrapper = {
+      transaction: {
+        ...transaction,
+        amount,
+      },
+    };
+    await this.#ynabAPI.transactions.updateTransaction(
+      this.#budgetID,
+      transaction.id,
+      transactionWrapper
+    );
   }
 
   async createTransaction(
