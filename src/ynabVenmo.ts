@@ -58,9 +58,10 @@ export class YnabVenmo {
         sinceDate
       );
 
-    return transactions.data.transactions.find(
-      (transaction) => transaction.import_id === importID
-    );
+    return transactions.data.transactions.find((transaction) => {
+      console.log("searched:", transaction.import_id);
+      return transaction.import_id === importID;
+    });
   }
 
   async updateTransaction({
@@ -102,6 +103,7 @@ export class YnabVenmo {
       },
     };
     try {
+      console.log("import ID:", transactionInfo.import_id);
       await this.#ynabAPI.transactions.createTransaction(
         this.#budgetID,
         transactionWrapper

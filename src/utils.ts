@@ -4,7 +4,7 @@ import {
   UpdateTransactionFields,
 } from "./ynabVenmo";
 import { parse as parseHTML } from "node-html-parser";
-// import { HTMLElement as ParsedHTML } from "node-html-parser";
+import { HTMLElement as ParsedHTML } from "node-html-parser";
 import { unformat } from "accounting";
 
 const VENMO_ADDRESS = "venmo@venmo.com";
@@ -16,14 +16,13 @@ export const parseVenmoEmail = (
     (parsed.from?.value[0].address === VENMO_ADDRESS ||
       parsed.from?.value[0].address === "sam@samlee.dev") &&
     parsed.html &&
-    parsed.subject &&
-    parsed.date
+    parsed.subject
   ) {
     const parsedHTML = parsed.html.replace(/\n|\r/g, "");
     const payerMatch = parsed.subject.match(/(.*)paid you/);
     if (payerMatch) {
       return {
-        date: getNonUpdateDate(parsed.date),
+        date: getNonTransactionDate(parsedHTML),
         amount: getNonUpdateAmount(parsed.subject, false),
         payee_name: payerMatch[1].trim(),
         memo: getNonTransactionMemo(parsedHTML),
@@ -36,7 +35,7 @@ export const parseVenmoEmail = (
     );
     if (payeeMatch) {
       return {
-        date: getNonUpdateDate(parsed.date),
+        date: getNonTransactionDate(parsedHTML),
         amount: getNonUpdateAmount(parsed.subject),
         payee_name: (payeeMatch[1] || payeeMatch[2]).trim(),
         memo: getNonTransactionMemo(parsedHTML),
@@ -47,10 +46,16 @@ export const parseVenmoEmail = (
     const receiptMatch = parsed.subject.match(/Receipt from(.*)- \$(.*)/);
     if (receiptMatch) {
       const transactionInfo = {
-        date: getNonUpdateDate(parsed.date),
+        date: getNonUpdateDate(parseHTML(parsedHTML)),
         amount: getNonUpdateAmount(receiptMatch[2]),
         payee_name: receiptMatch[1].trim(),
       };
+      console.log(
+        "using ID:",
+        transactionInfo.date +
+          transactionInfo.amount +
+          transactionInfo.payee_name
+      );
       return {
         ...transactionInfo,
         import_id:
@@ -63,10 +68,14 @@ export const parseVenmoEmail = (
     const updateMatch = parsed.subject.match(/Updated total from(.*)/);
     if (updateMatch) {
       const fields = getUpdateFields(parsedHTML);
+      console.log(
+        "searching for ID:",
+        fields.date + fields.amount + updateMatch[1].trim()
+      );
       return {
         amount: getUpdateAmount(parsedHTML),
         searchDate: fields.date,
-        importID: fields.date + fields.amount + fields.payee_name,
+        importID: fields.date + fields.amount + updateMatch[1].trim(),
         type: "UPDATE",
       };
     }
@@ -91,13 +100,12 @@ export const getNonUpdateImportID = (htmlText: string) => {
 
 const getUpdateFields = (htmlText: string) => {
   const matched = htmlText.match(
-    /(.*)updated the amount they charged you. On(.*), you authorized a charge for \$(.*)./
+    /updated the amount they charged you. On(.*), you authorized a charge for \$(.*)./
   );
   if (matched) {
     return {
-      date: new Date(matched[2]).toISOString().substring(0, 10),
-      amount: getNonUpdateAmount(matched[3]),
-      payee_name: matched[1].trim(),
+      date: new Date(matched[1]).toISOString().substring(0, 10),
+      amount: getNonUpdateAmount(matched[2]),
     };
   } else {
     throw new Error("Whoops");
@@ -118,5 +126,29 @@ const getUpdateAmount = (htmlText: string) => {
   return getNonUpdateAmount(amount);
 };
 
-const getNonUpdateDate = (date: Date | undefined) =>
-  (date ? date.toISOString() : new Date().toISOString()).substring(0, 10);
+// const getNonUpdateDate = (date: Date | undefined) =>
+//   (date ? date.toISOString() : new Date().toISOString()).substring(0, 10);
+
+const getNonTransactionDate = (htmlText: string) => {
+  const dateStringMatch = htmlText.match(
+    /Transfer Date and Amount:(.*)\<span\>(.*)P(S|D)T<\/span\>/
+  );
+  console.log("Date string match:", dateStringMatch);
+  if (dateStringMatch) {
+    return new Date(dateStringMatch[2]).toISOString().substring(0, 10);
+  } else throw new Error("Date does not exist! !");
+};
+
+const getNonUpdateDate = (htmlDoc: ParsedHTML) => {
+  // const dateStringMatch = htmlText.match(/\<p style=(.*?)\>(.*?)PST<\/p\>/);
+  const dateStringMatch = htmlDoc
+    .querySelector("h1 + p")
+    ?.innerText.match(/(.*)at/);
+  if (dateStringMatch) {
+    const date = new Date(dateStringMatch[1]);
+    const year = new Date().getFullYear();
+    date.setFullYear(year);
+    if (date > new Date()) date.setFullYear(year - 1);
+    return date.toISOString().substring(0, 10);
+  } else throw new Error("Date does not exist!");
+};
