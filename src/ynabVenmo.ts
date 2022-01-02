@@ -1,7 +1,10 @@
 import * as ynab from "ynab";
-import { SaveTransaction, UpdateTransaction } from "ynab";
+import { SaveTransaction } from "ynab";
 
-export type SaveTransactionNoAccountID = Omit<SaveTransaction, "account_id"> & {
+export type CreateTransactionNoAccountID = Omit<
+  SaveTransaction,
+  "account_id"
+> & {
   type: "CREATE";
 };
 export type UpdateTransactionFields = {
@@ -77,6 +80,8 @@ export class YnabVenmo {
       searchDate
     );
     if (!transaction) throw new Error("transaction does not exist :(");
+    console.log("Trying to update transaction with this:");
+    console.log(transaction);
     const transactionWrapper = {
       transaction: {
         ...transaction,
@@ -90,9 +95,7 @@ export class YnabVenmo {
     );
   }
 
-  async createTransaction(
-    transactionInfo: Omit<SaveTransaction, "account_id">
-  ) {
+  async createTransaction(transactionInfo: CreateTransactionNoAccountID) {
     if (!this.#budgetID || !this.#accountID) {
       throw new Error("Call init() first :(");
     }
@@ -103,13 +106,14 @@ export class YnabVenmo {
       },
     };
     try {
-      console.log("import ID:", transactionInfo.import_id);
+      console.log("Trying to create this transaction:");
+      console.log(transactionInfo);
       await this.#ynabAPI.transactions.createTransaction(
         this.#budgetID,
         transactionWrapper
       );
     } catch (err) {
-      console.log(err);
+      console.log("Error:", err);
     }
   }
 }

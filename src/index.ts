@@ -3,7 +3,7 @@ import { EmailListener } from "./emailListener";
 import { parseVenmoEmail } from "./utils";
 import { YnabVenmo } from "./ynabVenmo";
 import {
-  SaveTransactionNoAccountID,
+  CreateTransactionNoAccountID,
   UpdateTransactionFields,
 } from "./ynabVenmo";
 

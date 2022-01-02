@@ -1,6 +1,6 @@
 import { ParsedMail } from "mailparser";
 import {
-  SaveTransactionNoAccountID,
+  CreateTransactionNoAccountID,
   UpdateTransactionFields,
 } from "./ynabVenmo";
 import { parse as parseHTML } from "node-html-parser";
@@ -11,7 +11,7 @@ const VENMO_ADDRESS = "venmo@venmo.com";
 
 export const parseVenmoEmail = (
   parsed: ParsedMail
-): SaveTransactionNoAccountID | UpdateTransactionFields => {
+): CreateTransactionNoAccountID | UpdateTransactionFields => {
   if (
     (parsed.from?.value[0].address === VENMO_ADDRESS ||
       parsed.from?.value[0].address === "sam@samlee.dev") &&
@@ -50,12 +50,6 @@ export const parseVenmoEmail = (
         amount: getNonUpdateAmount(receiptMatch[2]),
         payee_name: receiptMatch[1].trim(),
       };
-      console.log(
-        "using ID:",
-        transactionInfo.date +
-          transactionInfo.amount +
-          transactionInfo.payee_name
-      );
       return {
         ...transactionInfo,
         import_id:
@@ -68,10 +62,6 @@ export const parseVenmoEmail = (
     const updateMatch = parsed.subject.match(/Updated total from(.*)/);
     if (updateMatch) {
       const fields = getUpdateFields(parsedHTML);
-      console.log(
-        "searching for ID:",
-        fields.date + fields.amount + updateMatch[1].trim()
-      );
       return {
         amount: getUpdateAmount(parsedHTML),
         searchDate: fields.date,
@@ -133,7 +123,6 @@ const getNonTransactionDate = (htmlText: string) => {
   const dateStringMatch = htmlText.match(
     /Transfer Date and Amount:(.*)\<span\>(.*)P(S|D)T<\/span\>/
   );
-  console.log("Date string match:", dateStringMatch);
   if (dateStringMatch) {
     return new Date(dateStringMatch[2]).toISOString().substring(0, 10);
   } else throw new Error("Date does not exist! !");
