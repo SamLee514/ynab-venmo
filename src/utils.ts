@@ -1,23 +1,16 @@
 import { ParsedMail } from "mailparser";
-import {
-  CreateTransactionNoAccountID,
-  UpdateTransactionFields,
-} from "./ynabVenmo";
+import { CreateTransactionInfo, UpdateTransactionInfo } from "./ynabVenmo";
 import { parse as parseHTML } from "node-html-parser";
 import { HTMLElement as ParsedHTML } from "node-html-parser";
 import { unformat } from "accounting";
 
-const VENMO_ADDRESS = "venmo@venmo.com";
+const ISO_DATE_LENGTH = 10;
+const IMPORT_ID_MAX_LENGTH = 36;
 
 export const parseVenmoEmail = (
   parsed: ParsedMail
-): CreateTransactionNoAccountID | UpdateTransactionFields => {
-  if (
-    (parsed.from?.value[0].address === VENMO_ADDRESS ||
-      parsed.from?.value[0].address === "sam@samlee.dev") &&
-    parsed.html &&
-    parsed.subject
-  ) {
+): CreateTransactionInfo | UpdateTransactionInfo => {
+  if (parsed.html && parsed.subject) {
     const parsedHTML = parsed.html.replace(/\n|\r/g, "");
     const payerMatch = parsed.subject.match(/(.*)paid you/);
     if (payerMatch) {
@@ -52,10 +45,11 @@ export const parseVenmoEmail = (
       };
       return {
         ...transactionInfo,
-        import_id:
+        import_id: (
           transactionInfo.date +
           transactionInfo.amount +
-          transactionInfo.payee_name,
+          transactionInfo.payee_name
+        ).substring(0, IMPORT_ID_MAX_LENGTH),
         type: "CREATE",
       };
     }
@@ -65,13 +59,19 @@ export const parseVenmoEmail = (
       return {
         amount: getUpdateAmount(parsedHTML),
         searchDate: fields.date,
-        importID: fields.date + fields.amount + updateMatch[1].trim(),
+        importID: (
+          fields.date +
+          fields.amount +
+          updateMatch[1].trim()
+        ).substring(0, IMPORT_ID_MAX_LENGTH),
         type: "UPDATE",
       };
     }
-    throw new Error("Something stupid happened oops");
+    console.log(
+      "Email does not match any known formats. Likely not a transaction update."
+    );
   }
-  throw new Error("Something bad happened oops");
+  throw new Error("Invalid email. Missing parsed.html or parsed.subject.");
 };
 
 const getNonTransactionMemo = (htmlText: string) => {
@@ -84,8 +84,11 @@ const getNonTransactionMemo = (htmlText: string) => {
 
 export const getNonUpdateImportID = (htmlText: string) => {
   const match = htmlText.match(/Payment ID:(.*?)\<\//);
-  if (match) return match[1].trim();
-  else throw new Error("oops");
+  if (match) return match[1].trim().substring(0, IMPORT_ID_MAX_LENGTH);
+  else
+    throw new Error(
+      `Payment ID match broke for non-updates. HTML as follows:\n\n${htmlText}`
+    );
 };
 
 const getUpdateFields = (htmlText: string) => {
@@ -94,11 +97,13 @@ const getUpdateFields = (htmlText: string) => {
   );
   if (matched) {
     return {
-      date: new Date(matched[1]).toISOString().substring(0, 10),
+      date: new Date(matched[1]).toISOString().substring(0, ISO_DATE_LENGTH),
       amount: getNonUpdateAmount(matched[2]),
     };
   } else {
-    throw new Error("Whoops");
+    throw new Error(
+      `Getting update fields broke. HTML as follows:\n\n${htmlText}`
+    );
   }
 };
 
@@ -112,7 +117,10 @@ const getUpdateAmount = (htmlText: string) => {
     .pop()
     ?.parentNode.querySelectorAll("p")
     .pop()?.innerText;
-  if (!amount) throw new Error("lol");
+  if (!amount)
+    throw new Error(
+      `Getting update amount broke. HTML as follows:\n\n${htmlText}`
+    );
   return getNonUpdateAmount(amount);
 };
 
@@ -124,20 +132,29 @@ const getNonTransactionDate = (htmlText: string) => {
     /Transfer Date and Amount:(.*)\<span\>(.*)P(S|D)T<\/span\>/
   );
   if (dateStringMatch) {
-    return new Date(dateStringMatch[2]).toISOString().substring(0, 10);
-  } else throw new Error("Date does not exist! !");
+    return new Date(dateStringMatch[2])
+      .toISOString()
+      .substring(0, ISO_DATE_LENGTH);
+  } else
+    throw new Error(
+      `Getting non-transaction date broke. HTML as follows:\n\n${htmlText}`
+    );
 };
 
 const getNonUpdateDate = (htmlDoc: ParsedHTML) => {
   // const dateStringMatch = htmlText.match(/\<p style=(.*?)\>(.*?)PST<\/p\>/);
-  const dateStringMatch = htmlDoc
-    .querySelector("h1 + p")
-    ?.innerText.match(/(.*)at/);
+  const re = /(.*)at/;
+  const dateStringMatch =
+    htmlDoc.querySelector("h1 + p")?.innerText.match(re) ||
+    htmlDoc.querySelector("h2 + p")?.innerText.match(re);
   if (dateStringMatch) {
     const date = new Date(dateStringMatch[1]);
     const year = new Date().getFullYear();
     date.setFullYear(year);
     if (date > new Date()) date.setFullYear(year - 1);
-    return date.toISOString().substring(0, 10);
-  } else throw new Error("Date does not exist!");
+    return date.toISOString().substring(0, ISO_DATE_LENGTH);
+  } else
+    throw new Error(
+      `Getting non-update transaction date broke. HTML as follows:\n\n${htmlDoc.toString()}`
+    );
 };
