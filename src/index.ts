@@ -9,7 +9,7 @@ const CONNECTION_CONFIG = {
   port: parseInt(process.env.EMAIL_PORT || ""),
   tls: false,
 };
-const VENMO_ADDRESS = "sam@samlee.dev"; //"venmo@venmo.com";
+const VENMO_ADDRESS = "venmo@venmo.com";
 
 const main = async () => {
   const ynabVenmo = new YnabVenmo(
