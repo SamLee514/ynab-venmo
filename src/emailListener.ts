@@ -27,7 +27,7 @@ export class EmailListener {
   start() {
     this.#imap.once("ready", () => {
       this.#imap.openBox(
-        process.env.MAILBOX || "",
+        process.env.MAILBOX || "INBOX",
         true,
         this.#createOpenBoxHandler()
       );
