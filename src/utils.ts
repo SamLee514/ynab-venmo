@@ -1,5 +1,9 @@
 import { ParsedMail } from "mailparser";
-import { CreateTransactionInfo, UpdateTransactionInfo } from "./ynabVenmo";
+import {
+  CreateTransactionInfo,
+  TransferTransactionInfo,
+  UpdateTransactionInfo,
+} from "./ynabVenmo";
 import { parse as parseHTML } from "node-html-parser";
 import { HTMLElement as ParsedHTML } from "node-html-parser";
 import { unformat } from "accounting";
@@ -9,7 +13,7 @@ const IMPORT_ID_MAX_LENGTH = 36;
 
 export const parseVenmoEmail = (
   parsed: ParsedMail
-): CreateTransactionInfo | UpdateTransactionInfo => {
+): CreateTransactionInfo | UpdateTransactionInfo | TransferTransactionInfo => {
   if (parsed.html && parsed.subject) {
     const parsedHTML = parsed.html.replace(/\n|\r/g, "");
     const payerMatch = parsed.subject.match(/(.*)paid you/);
@@ -67,6 +71,16 @@ export const parseVenmoEmail = (
         type: "UPDATE",
       };
     }
+    const transferHereMatch = parsed.subject.match(
+      /Your \$(.*) transfer from (.*) is complete/
+    );
+    if (transferHereMatch) {
+      const fields = getTransferFields(parsedHTML);
+      return {
+        amount: fields.amount,
+        date: fields.date,
+      };
+    }
     console.log(
       "Email does not match any known formats. Likely not a transaction update."
     );
@@ -105,6 +119,27 @@ const getUpdateFields = (htmlText: string) => {
       `Getting update fields broke. HTML as follows:\n\n${htmlText}`
     );
   }
+};
+
+const getTransferFields = (htmlText: string) => {
+  const htmlDoc = parseHTML(htmlText);
+  const info = htmlDoc
+    .querySelector("center")
+    ?.querySelector("th")
+    ?.querySelectorAll("p");
+  if (!info)
+    throw new Error(
+      `Getting fields for transfer broke. HTML as follows:\n\n${htmlText}`
+    );
+  const date = new Date(info[5].innerText)
+    .toISOString()
+    .substring(0, ISO_DATE_LENGTH);
+  const amount = getNonUpdateAmount(info[2].innerText);
+  // TODO: honestly idk if transfer ID matters here. If I include it, might break the import matching with bank.
+  return {
+    date,
+    amount,
+  };
 };
 
 const getNonUpdateAmount = (context: string, outflow: boolean = true) =>
