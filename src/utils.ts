@@ -13,7 +13,11 @@ const IMPORT_ID_MAX_LENGTH = 36;
 
 export const parseVenmoEmail = (
   parsed: ParsedMail
-): CreateTransactionInfo | UpdateTransactionInfo | TransferTransactionInfo => {
+):
+  | CreateTransactionInfo
+  | UpdateTransactionInfo
+  | TransferTransactionInfo
+  | { type: "NO_MATCH" } => {
   if (parsed.html && parsed.subject) {
     const parsedHTML = parsed.html.replace(/\n|\r/g, "");
     const payerMatch = parsed.subject.match(/(.*)paid you/);
@@ -71,19 +75,22 @@ export const parseVenmoEmail = (
         type: "UPDATE",
       };
     }
-    const transferHereMatch = parsed.subject.match(
-      /Your \$(.*) transfer from (.*) is complete/
-    );
-    if (transferHereMatch) {
-      const fields = getTransferFields(parsedHTML);
+    if (parsed.subject.match(/You initiated a \$(.*) transfer from/)) {
+      const fields = getTransferFields(parsedHTML, false);
       return {
-        amount: fields.amount,
-        date: fields.date,
+        ...fields,
+        type: "TRANSFER",
       };
     }
-    console.log(
-      "Email does not match any known formats. Likely not a transaction update."
-    );
+    if (parsed.subject.match(/Your Venmo bank transfer has been initiated/)) {
+      const fields = getTransferFields(parsedHTML, true);
+      return {
+        ...fields,
+        type: "TRANSFER",
+      };
+    }
+    console.log("subject:", parsed.subject);
+    return { type: "NO_MATCH" };
   }
   throw new Error("Invalid email. Missing parsed.html or parsed.subject.");
 };
@@ -121,7 +128,7 @@ const getUpdateFields = (htmlText: string) => {
   }
 };
 
-const getTransferFields = (htmlText: string) => {
+const getTransferFields = (htmlText: string, toBank: boolean) => {
   const htmlDoc = parseHTML(htmlText);
   const info = htmlDoc
     .querySelector("center")
@@ -131,14 +138,13 @@ const getTransferFields = (htmlText: string) => {
     throw new Error(
       `Getting fields for transfer broke. HTML as follows:\n\n${htmlText}`
     );
-  const date = new Date(info[5].innerText)
-    .toISOString()
-    .substring(0, ISO_DATE_LENGTH);
-  const amount = getNonUpdateAmount(info[2].innerText);
-  // TODO: honestly idk if transfer ID matters here. If I include it, might break the import matching with bank.
+  // Unfortunately, getting rid of import id doesn't change the fact that transfers don't match
   return {
-    date,
-    amount,
+    date: new Date(info[1].innerText)
+      .toISOString()
+      .substring(0, ISO_DATE_LENGTH),
+    amount: getNonUpdateAmount(info[2].innerText, toBank),
+    import_id: info[toBank ? 3 : 4].innerText + "1",
   };
 };
 
@@ -159,9 +165,6 @@ const getUpdateAmount = (htmlText: string) => {
   return getNonUpdateAmount(amount);
 };
 
-// const getNonUpdateDate = (date: Date | undefined) =>
-//   (date ? date.toISOString() : new Date().toISOString()).substring(0, 10);
-
 const getNonTransactionDate = (htmlText: string) => {
   const dateStringMatch = htmlText.match(
     /Transfer Date and Amount:(.*)\<span\>(.*)P(S|D)T<\/span\>/
@@ -177,7 +180,6 @@ const getNonTransactionDate = (htmlText: string) => {
 };
 
 const getNonUpdateDate = (htmlDoc: ParsedHTML) => {
-  // const dateStringMatch = htmlText.match(/\<p style=(.*?)\>(.*?)PST<\/p\>/);
   const re = /(.*)at/;
   const dateStringMatch =
     htmlDoc.querySelector("h1 + p")?.innerText.match(re) ||

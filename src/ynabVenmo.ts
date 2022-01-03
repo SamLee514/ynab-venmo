@@ -12,26 +12,35 @@ export type UpdateTransactionInfo = {
   importID: string;
   type: "UPDATE";
 };
+export type TransferTransactionInfo = Omit<SaveTransaction, "account_id"> & {
+  type: "TRANSFER";
+};
 
 const ynabAPI = new ynab.API(process.env.YNAB_TOKEN || "");
-
 export class YnabVenmo {
   #ynabAPI: ynab.api;
   #budgetID: string | undefined;
   #venmoAccountName: string;
-  #accountID: string | undefined;
-  #initialized: boolean;
+  #transferAccountName: string;
+  #venmoAccountID: string | undefined;
   #redisClient: redis.RedisClientType<any>;
+  #transferAccountID: string | undefined;
 
-  constructor(token: string, venmoAccountName: string) {
+  constructor(
+    token: string,
+    venmoAccountName: string,
+    transferAccountName: string
+  ) {
     this.#ynabAPI = new ynab.API(token);
     this.#venmoAccountName = venmoAccountName;
-    this.#initialized = false;
+    this.#transferAccountName = transferAccountName;
     this.#redisClient = createClient();
     this.#redisClient.on("error", (err: Error) =>
       console.log("Redis Client Error", err)
     );
   }
+
+  // *************************** Public methods ***************************
 
   async init() {
     // get budget ID
@@ -48,41 +57,21 @@ export class YnabVenmo {
         `Given Venmo account name ${this.#venmoAccountName} is not valid`
       );
     }
-    this.#accountID = venmoAccount.id;
+    this.#venmoAccountID = venmoAccount.id;
+
+    // transfer stuff
+    const transferAccount = accounts.data.accounts.find(
+      (account) => account.name === this.#transferAccountName
+    );
+    if (!transferAccount) {
+      throw new Error(
+        `Given transfer account name ${this.#transferAccountName} is not valid`
+      );
+    }
+    this.#transferAccountID = transferAccount.transfer_payee_id;
 
     // redis
     await this.#redisClient.connect();
-  }
-
-  async #getTransactionIDByImportID(
-    importID: string,
-    sinceDate: string
-  ): Promise<string> {
-    // TODO: redis
-    // NOTE: not using payee because changing payee names can create a problem.
-    if (!this.#budgetID || !this.#accountID) {
-      throw new Error("Call init() first :(");
-    }
-
-    const redisCheck = await this.#redisClient.get(importID);
-    if (redisCheck) return redisCheck;
-
-    const transactions =
-      await this.#ynabAPI.transactions.getTransactionsByAccount(
-        this.#budgetID,
-        this.#accountID,
-        sinceDate
-      );
-
-    const ynabCheck = transactions.data.transactions.find((transaction) => {
-      return transaction.import_id === importID;
-    });
-
-    if (ynabCheck) {
-      await this.#redisClient.set(importID, ynabCheck.id);
-      return ynabCheck.id;
-    }
-    throw new Error(`Bad transaction import ID for update: ${importID}`);
   }
 
   async updateTransaction({
@@ -90,7 +79,7 @@ export class YnabVenmo {
     searchDate,
     importID,
   }: UpdateTransactionInfo) {
-    if (!this.#budgetID || !this.#accountID) {
+    if (!this.#budgetID || !this.#venmoAccountID) {
       throw new Error("Call init() first :(");
     }
     const id = await this.#getTransactionIDByImportID(importID, searchDate);
@@ -99,7 +88,7 @@ export class YnabVenmo {
       transaction: {
         id,
         date: searchDate,
-        account_id: this.#accountID,
+        account_id: this.#venmoAccountID,
         amount,
       },
     };
@@ -112,16 +101,17 @@ export class YnabVenmo {
       importID,
       JSON.stringify(savedTransaction.data.transaction)
     );
+    console.log("Successfully updated and cached transaction");
   }
 
   async createTransaction(transactionInfo: CreateTransactionInfo) {
-    if (!this.#budgetID || !this.#accountID) {
+    if (!this.#budgetID || !this.#venmoAccountID) {
       throw new Error("Call init() first :(");
     }
     const transactionWrapper = {
       transaction: {
         ...transactionInfo,
-        account_id: this.#accountID,
+        account_id: this.#venmoAccountID,
       },
     };
     console.log("Trying to create this transaction:");
@@ -134,7 +124,58 @@ export class YnabVenmo {
       transactionInfo.import_id,
       savedTransaction.data.transaction!.id // ! because we are only working with single transactions
     );
+    console.log("Successfully created and cached transaction!");
+  }
 
-    const keys = await this.#redisClient.keys("*");
+  async createTransfer(transactionInfo: TransferTransactionInfo) {
+    if (!this.#budgetID || !this.#venmoAccountID || !this.#transferAccountID) {
+      throw new Error("Call init() first :(");
+    }
+    const transactionWrapper = {
+      transaction: {
+        ...transactionInfo,
+        account_id: this.#venmoAccountID,
+        payee_id: this.#transferAccountID,
+      },
+    };
+    console.log("Trying to create this transfer:");
+    console.log(transactionInfo);
+    await this.#ynabAPI.transactions.createTransaction(
+      this.#budgetID,
+      transactionWrapper
+    );
+    console.log("Successfully created transfer!");
+  }
+
+  // *************************** Private Methods ***************************
+
+  async #getTransactionIDByImportID(
+    importID: string,
+    sinceDate: string
+  ): Promise<string> {
+    // NOTE: not using payee because changing payee names can create a problem.
+    if (!this.#budgetID || !this.#venmoAccountID) {
+      throw new Error("Call init() first :(");
+    }
+
+    const redisCheck = await this.#redisClient.get(importID);
+    if (redisCheck) return redisCheck;
+
+    const transactions =
+      await this.#ynabAPI.transactions.getTransactionsByAccount(
+        this.#budgetID,
+        this.#venmoAccountID,
+        sinceDate
+      );
+
+    const ynabCheck = transactions.data.transactions.find((transaction) => {
+      return transaction.import_id === importID;
+    });
+
+    if (ynabCheck) {
+      await this.#redisClient.set(importID, ynabCheck.id);
+      return ynabCheck.id;
+    }
+    throw new Error(`Bad transaction import ID for update: ${importID}`);
   }
 }

@@ -50,7 +50,8 @@ export class EmailListener {
     return (err: Error, box: Box) => {
       if (err) throw err;
       console.log("Connection successful!");
-      this.#imap.on("mail", this.#createMailParser(box));
+      const mailParser = this.#createMailParser(box);
+      this.#imap.on("mail", mailParser);
       console.log("Now listening for messages from Venmo...");
     };
   }
@@ -82,11 +83,11 @@ export class EmailListener {
 
   #checkForUpdate = (message: ImapMessage, seqno: string) => {
     const bodyHandler = () => this.setIsBoxUpdated(true);
-    message.on("body", bodyHandler);
+    message.once("body", bodyHandler);
   };
 
   #parseMail = async (message: ImapMessage) => {
-    message.on("body", async (stream: NodeJS.ReadableStream) => {
+    message.once("body", async (stream: NodeJS.ReadableStream) => {
       const parsed = await simpleParser(stream);
       await this.#handleParsedMail(parsed);
       this.setIsBoxUpdated(false);
