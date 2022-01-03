@@ -26,7 +26,11 @@ export class EmailListener {
 
   start() {
     this.#imap.once("ready", () => {
-      this.#imap.openBox("INBOX", true, this.#createOpenBoxHandler());
+      this.#imap.openBox(
+        process.env.MAILBOX || "",
+        true,
+        this.#createOpenBoxHandler()
+      );
     });
 
     this.#imap.once("error", (err: Error) => {
