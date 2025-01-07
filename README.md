@@ -1,4 +1,9 @@
 # ynab-venmo
+
+> **Update:** Note that this project is no longer in use as YNAB now supports direct imports from Venmo. I put this together during a time when this feature was not yet available, and I had a lot of transactions via Venmo that I wanted to automatically import into YNAB.
+> 
+> It was fun while it lasted ¯\\\_(ツ)\_/¯
+
 Because YNAB still doesn't have direct import from Venmo and Venmo doesn't have a public API >:^(
 
 **TLDR:** Hooks up to IMAP mailbox, listens for any emails from Venmo. Parses those emails into transaction information that then get sent to YNAB. This of course requires that email notifications from Venmo be set up. Use at your own peril 👻👻.
